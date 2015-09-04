@@ -39,7 +39,7 @@ public class GuaranteedDeliveryTest {
 		AtomicBoolean consumerTransactionFailed = new AtomicBoolean(false);
 		AtomicBoolean consumerTransactionResumed = new AtomicBoolean(false);
 		try {
-			jmsConsumer.listen((message) -> {
+			jmsConsumer.listenForOneMessage((message) -> {
 				consumerTransactionFailed.set(true);
 				throw new RuntimeException("Transaction fail");
 			}, HOST, destination, DeliveryMode.PERSISTENT, Session.SESSION_TRANSACTED);
@@ -47,7 +47,7 @@ public class GuaranteedDeliveryTest {
 			int gracePeriod = 200;
 			Thread.sleep(gracePeriod);
 			// Resume consumer transaction
-			jmsConsumer.listen((message) -> {
+			jmsConsumer.listenForOneMessage((message) -> {
 				consumerTransactionResumed.set(true);
 				Assert.assertEquals(outgoingMessage, message);
 			}, HOST, destination, DeliveryMode.PERSISTENT, Session.SESSION_TRANSACTED);

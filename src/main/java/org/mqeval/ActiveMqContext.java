@@ -1,7 +1,7 @@
 package org.mqeval;
 
 import javax.jms.Connection;
-import javax.jms.Destination;
+import javax.jms.JMSException;
 import javax.jms.Queue;
 import javax.jms.Topic;
 
@@ -15,15 +15,23 @@ public class ActiveMqContext implements Context {
 	private static int port = 61616;
 
 	@Override
-	public Connection newConnection(String host) throws Exception {
+	public Connection newConnection(String host) {
 		ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://" + host + ":" + port);
-		return factory.createConnection(user, password);
+		try {
+			return factory.createConnection(user, password);
+		} catch (JMSException e) {
+			throw new RuntimeException("newConnection() failed", e);
+		}
 	}
 
 	@Override
-	public Connection newConnection(String hostA, String hostB) throws Exception {
+	public Connection newConnection(String hostA, String hostB) {
 		ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(String.format("failover:(tcp://%s:%d,tcp://%s:%d)",hostA,port,hostB,port));
-		return factory.createConnection(user, password);
+		try {
+			return factory.createConnection(user, password);
+		} catch (JMSException e) {
+			throw new RuntimeException("newConnection() failed", e);
+		}
 	}
 	@Override
 	public Topic newTopic(String topicName) throws Exception {

@@ -8,23 +8,22 @@ import javax.jms.Destination;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
 
-public class JmsProducer {
-	private Context context;
-
+public class JmsProducer extends JmsCommon {
+	
 	public JmsProducer(Context context) {
-		this.context = context;
+		super(context);
 	}
 
 	public void send(List<String> messages, String hostA, String hostB, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		send(messages, context.newConnection(hostA,hostB), dest, deliveryMode, acknowledgeMode);
+		send(messages, connect(hostA,hostB), dest, deliveryMode, acknowledgeMode);
 	}
 
 	public void send(List<String> messages, String host, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		send(messages, context.newConnection(host), dest, deliveryMode, acknowledgeMode);
+		send(messages, connect(host), dest, deliveryMode, acknowledgeMode);
 	}
 	
 	public void send(String message, String host, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		send(Arrays.asList(new String[]{message}), context.newConnection(host), dest, deliveryMode, acknowledgeMode);
+		send(Arrays.asList(new String[]{message}), connect(host), dest, deliveryMode, acknowledgeMode);
 	}
 
 	public void send(List<String> messages, Connection connection, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
@@ -61,15 +60,4 @@ public class JmsProducer {
 		}
 	}
 
-	private void close(Connection resource) {
-		try {
-			if (resource != null) resource.close();
-		} catch (Exception e) {}
-	}
-	
-	private void close(Session resource) {
-		try {
-			if (resource != null) resource.close();
-		} catch (Exception e) {}
-	}
 }

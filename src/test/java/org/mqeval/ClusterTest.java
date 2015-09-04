@@ -19,7 +19,7 @@ public class ClusterTest {
 	private final Context context = newContext();
 	private JmsProducer jmsProducer = null;
 	private JmsConsumer jmsConsumer = null;
-	private final static String HostA = "puppet03", HostB = "puppet02";
+	private final static String HostA = "puppet01", HostB = "puppet02";
 
 	Context newContext() {
 		return new ActiveMqContext();
@@ -42,11 +42,11 @@ public class ClusterTest {
 
 	private void attachConsumer(Destination destination, final int messageCount, final CountDownLatch countDownLatch) {
 		new Thread(() -> {
+			System.out.println("attachConsumer-1");
 			try {
-				jmsConsumer.listen(((message) -> { 
+				jmsConsumer.receive(messageCount, HostA, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE);
 				countDownLatch.countDown();
 				System.out.println("attachConsumer-Done");
-				}), HostA, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE);
 			} catch (Exception e) {
 				Assert.fail(e.getMessage());
 			}
@@ -62,25 +62,29 @@ public class ClusterTest {
 	/*
 	Clustering-1. - Will consumers and producers fail-over to another broker when the current connections fail?
 		- Connect a producer and a consumer to a clustered broker A.
-		- Kill the broker A.
+		- Kill broker A.
 		- Verify that producer and consumer connections are taken over by another broker.
 		- Restart broker A.
 	*/
 	@Test
 	public void areConnectionsTransferedAfterBrokerCrash() throws Exception {
-		final int messageCount = 2;
+		final int messageCount = 12;
 		final AtomicBoolean allMessagesWasSent = new AtomicBoolean(false);
-		final CountDownLatch allMessagesWasReceived = new CountDownLatch(messageCount);
+		final CountDownLatch allMessagesWasReceived = new CountDownLatch(1);
 		Destination destination = context.newQueue("areConnectionsTransferedAfterBrokerCrashQueue");
 		System.out.println("areConnectionsTransferedAfterBrokerCrash - 1");
-		attachProducer(destination, MessageGenerator.generate(messageCount), allMessagesWasSent);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 2");
 		attachConsumer(destination, messageCount, allMessagesWasReceived);
+		System.out.println("areConnectionsTransferedAfterBrokerCrash - 2");
+		context.stopBroker(HostA);
 		System.out.println("areConnectionsTransferedAfterBrokerCrash - 3");
 		Thread.sleep(15*1000);
-		allMessagesWasReceived.await();//30, TimeUnit.SECONDS);
 		System.out.println("areConnectionsTransferedAfterBrokerCrash - 4");
+		attachProducer(destination, MessageGenerator.generate(messageCount), allMessagesWasSent);
+		System.out.println("areConnectionsTransferedAfterBrokerCrash - 5");
+		allMessagesWasReceived.await(15, TimeUnit.SECONDS);
+		System.out.println("areConnectionsTransferedAfterBrokerCrash - 6");
 		Assert.assertTrue(allMessagesWasSent.get());
+		context.startBroker(HostA);
 		System.out.println("areConnectionsTransferedAfterBrokerCrash - Done");
 	}
 	

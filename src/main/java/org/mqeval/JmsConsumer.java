@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import javax.jms.Connection;
 import javax.jms.Destination;
@@ -17,24 +18,23 @@ import javax.jms.TextMessage;
 import javax.jms.Topic;
 import javax.jms.TopicSubscriber;
 
-public class JmsConsumer {
-	private Context context;
+public class JmsConsumer extends JmsCommon {
 
 	public JmsConsumer(Context context) {
-		this.context = context;
+		super(context);
 	}
 
 	public List<String> receive(int count, String hostA, String hostB, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		Connection connection = context.newConnection(hostA,hostB);
+		Connection connection = connect(hostA, hostB);
 		return receive(count, connection, dest, deliveryMode, acknowledgeMode);
 	}
-	
-	public List<String> receive(int count, String host, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		Connection connection = context.newConnection(host);
-		return receive(count, connection, dest, deliveryMode, acknowledgeMode);
-	}		
 
-	public List<String> receive(int count, Connection connection, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
+	public List<String> receive(int count, String host, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
+		Connection connection = connect(host);
+		return receive(count, connection, dest, deliveryMode, acknowledgeMode);
+	}
+
+	private List<String> receive(int count, Connection connection, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
 		boolean isTransacted = (acknowledgeMode == Session.SESSION_TRANSACTED);
 		List<String> messages = new ArrayList<>();
 		try {
@@ -63,15 +63,15 @@ public class JmsConsumer {
 		return messages;
 	}
 
-	public void listen(Consumer<String> func, String hostA, String hostB, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		listen(func, context.newConnection(hostB,hostB), dest, deliveryMode, acknowledgeMode);
+	public void listenForOneMessage(Consumer<String> func, String hostA, String hostB, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
+		listenForOneMessage(func, connect(hostB, hostB), dest, deliveryMode, acknowledgeMode);
 	}
-	
-	public void listen(Consumer<String> func, String host, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
-		listen(func, context.newConnection(host), dest, deliveryMode, acknowledgeMode);
+
+	public void listenForOneMessage(Consumer<String> func, String host, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
+		listenForOneMessage(func, connect(host), dest, deliveryMode, acknowledgeMode);
 	}
-	
-	public void listen(Consumer<String> func, Connection connection, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
+
+	private void listenForOneMessage(Consumer<String> func, Connection connection, Destination dest, int deliveryMode, int acknowledgeMode) throws Exception {
 		boolean isTransacted = (acknowledgeMode == Session.SESSION_TRANSACTED);
 		try {
 			connection.start();
@@ -101,7 +101,7 @@ public class JmsConsumer {
 
 	public List<String> receiveDurableSubscription(int count, String host, Topic dest, int acknowledgeMode) throws Exception {
 		List<String> messages = new ArrayList<>();
-		Connection connection = context.newConnection(host);
+		Connection connection = connect(host);
 		final CountDownLatch countDownLatch = new CountDownLatch(count);
 		String clientID = UUID.randomUUID().toString();
 		connection.setClientID(clientID);
@@ -135,16 +135,4 @@ public class JmsConsumer {
 		return messages;
 	}
 
-	private void close(Connection resource) {
-		try {
-			if (resource != null) resource.close();
-		} catch (Exception e) {}
-	}
-	
-	private void close(Session resource) {
-		try {
-			if (resource != null) resource.close();
-		} catch (Exception e) {}
-	}
-	
 }
