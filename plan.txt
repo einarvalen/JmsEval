@@ -1,0 +1,8 @@
+MqEva
+=====
+- Config.java to isolate broker specifics instead of Spring
+- src/main/java/org/mqeval/ - for common code
+- src/test/java/org/mqeval/ - for test scenarios
+- Copy code from AMQ exsamples first, 
+  next make portable between brokes when next broker is to be evaluated
+
