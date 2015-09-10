@@ -25,28 +25,15 @@ public class ClusterTest {
 		return new ActiveMqContext();
 	}
 
-	private void attachProducer(Destination destination, List<String> outgoingMessages, AtomicBoolean allMessagesWasSent) {
-		new Thread(() -> {
-			try {
-				//jmsProducer.send(outgoingMessages, HostA, HostB, destination, DeliveryMode.PERSISTENT, Session.AUTO_ACKNOWLEDGE);
-				System.out.println("attachProducer-1");
-				jmsProducer.send(outgoingMessages, HostA, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE);
-				System.out.println("attachProducer-2");
-				allMessagesWasSent.set(true);
-				System.out.println("attachProducer-Done");
-			} catch (Exception e) {
-				Assert.fail(e.getMessage());
-			}
-		}).start();
+	@FunctionalInterface
+	private interface MyTask {
+		void run() throws Exception;
 	}
-
-	private void attachConsumer(Destination destination, final int messageCount, final CountDownLatch countDownLatch) {
+	
+	private void execInThread( MyTask task) {
 		new Thread(() -> {
-			System.out.println("attachConsumer-1");
 			try {
-				jmsConsumer.receive(messageCount, HostA, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE);
-				countDownLatch.countDown();
-				System.out.println("attachConsumer-Done");
+				task.run();
 			} catch (Exception e) {
 				Assert.fail(e.getMessage());
 			}
@@ -68,24 +55,23 @@ public class ClusterTest {
 	*/
 	@Test
 	public void areConnectionsTransferedAfterBrokerCrash() throws Exception {
-		final int messageCount = 12;
+		final int messageCount = 11;
 		final AtomicBoolean allMessagesWasSent = new AtomicBoolean(false);
 		final CountDownLatch allMessagesWasReceived = new CountDownLatch(1);
 		Destination destination = context.newQueue("areConnectionsTransferedAfterBrokerCrashQueue");
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 1");
-		attachConsumer(destination, messageCount, allMessagesWasReceived);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 2");
+		execInThread(() -> {
+			jmsConsumer.receive(messageCount, HostA, HostB, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE);
+			allMessagesWasReceived.countDown();
+		});
 		context.stopBroker(HostA);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 3");
 		Thread.sleep(15*1000);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 4");
-		attachProducer(destination, MessageGenerator.generate(messageCount), allMessagesWasSent);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 5");
+		execInThread(() -> {
+			jmsProducer.send(MessageGenerator.generate(messageCount), HostA, HostB, destination, DeliveryMode.PERSISTENT, Session.AUTO_ACKNOWLEDGE);
+			allMessagesWasSent.set(true);
+		});
 		allMessagesWasReceived.await(15, TimeUnit.SECONDS);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - 6");
-		Assert.assertTrue(allMessagesWasSent.get());
 		context.startBroker(HostA);
-		System.out.println("areConnectionsTransferedAfterBrokerCrash - Done");
+		Assert.assertTrue(allMessagesWasSent.get());
 	}
 	
 
@@ -99,8 +85,9 @@ public class ClusterTest {
 	*/
 	@Test
 	public void willAllPersistentMessagesArriveAndOnlyOnceAfterBrokerCrash() throws Exception {
-		
+		willAllMessagesArriveAndOnlyOnceAfterBrokerCrash(DeliveryMode.PERSISTENT);
 	}
+	
 	
 	/*
 	Clustering-3 - When a broker fails and another broker takes over, can non-persistent messages be lost?
@@ -110,18 +97,54 @@ public class ClusterTest {
 	*/
 	@Test
 	public void willAllNonPersistentMessagesArriveAndOnlyOnceAfterBrokerCrash() throws Exception {
-		
+		willAllMessagesArriveAndOnlyOnceAfterBrokerCrash(DeliveryMode.NON_PERSISTENT);
 	}
 	
+	private void willAllMessagesArriveAndOnlyOnceAfterBrokerCrash(int deliveryMode) throws Exception {
+		final int messageCount = 20;
+		final CountDownLatch allMessagesWasReceived = new CountDownLatch(1);
+		List<String> outgoingMessages = MessageGenerator.generate(messageCount);
+		Destination destination = context.newQueue("willAllPersistentMessagesArriveAndOnlyOnceAfterBrokerCrashQueue");
+		execInThread(() -> {
+			List<String> incommingMessages = jmsConsumer.receive(messageCount, HostA, HostB, destination, deliveryMode, Session.AUTO_ACKNOWLEDGE);
+			Assert.assertEquals(outgoingMessages, incommingMessages);
+			allMessagesWasReceived.countDown();
+		});
+		execInThread(() -> {
+			jmsProducer.send(outgoingMessages.subList(0, messageCount / 2), HostA, HostB, destination, deliveryMode, Session.AUTO_ACKNOWLEDGE);
+			context.stopBroker(HostA);
+			Thread.sleep(5*1000);
+			jmsProducer.send(outgoingMessages.subList(messageCount / 2, messageCount), HostA, HostB, destination, deliveryMode, Session.AUTO_ACKNOWLEDGE);
+		});
+		allMessagesWasReceived.await(15, TimeUnit.SECONDS);
+		context.startBroker(HostA);
+	}
+
 	/*
 	Clustering-4 - Are connections evenly distributed across the brokers in a cluster?
-		- Create one set of producers and another set of consumers to a queue.
-		- Observe how the connection distribute across available brokers.
-		- Expect the number of producers and consumers to be evenly spread out.
+		- Create a set queues with producers and consumers.
+		- Observe how this distributes across available brokers.
+		- Expect the number of producers and consumers to be approximately evenly spread out.
 	 */
 	@Test
 	public void areConnectionsEvenlyDistributed() throws Exception {
-		
+		final int queueCount = 30;
+		final CountDownLatch countDownLatch = new CountDownLatch(1);
+		for (int i = 0; i < queueCount; ++i) {
+			Destination destination = context.newQueue("areConnectionsEvenlyDistributed" + i);	
+			execInThread(() -> jmsConsumer.listenForOneMessage((message) -> await(countDownLatch), HostA, HostB, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE));
+			execInThread(() -> jmsProducer.send(MessageGenerator.generate(1), HostA, HostB, destination, DeliveryMode.NON_PERSISTENT, Session.AUTO_ACKNOWLEDGE));
+		}
+		Thread.sleep(30*1000);
+		countDownLatch.countDown();
+	}
+	
+	private void await(CountDownLatch countDownLatch) {
+		try {
+			countDownLatch.await(30,TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 }

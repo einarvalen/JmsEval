@@ -80,9 +80,7 @@ public class JmsConsumer extends JmsCommon {
 				MessageConsumer consumer = session.createConsumer(dest);
 				Message msg = consumer.receive();
 				if (msg instanceof TextMessage) {
-					System.out.println("listen- func - 1");
 					func.accept(((TextMessage) msg).getText());
-					System.out.println("listen- func - 2");
 				} else {
 					throw new IllegalArgumentException("Unexpected message type: " + msg.getClass());
 				}
@@ -95,7 +93,6 @@ public class JmsConsumer extends JmsCommon {
 			}
 		} finally {
 			close(connection);
-			System.out.println("lisyten- func - Done");
 		}
 	}
 
